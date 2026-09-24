@@ -8,6 +8,7 @@
 - 模拟 Docker 命令的脚本集成用例通过：首次部署、重复更新保留 `.env`、HTTPS 失败返回非零且不打印上线成功。该模拟不代表实际安装 Docker 或申请证书。
 - 前端 JavaScript、Bash 语法、真实 `docker compose config --quiet` 通过；`--check` 不创建本地 `.env`、不启动容器。
 - 本机 Docker Desktop 已启动，但 Docker Hub 鉴权端点连接超时，镜像拉取未成功。本次补充 GitHub Actions，在 Linux 上构建镜像、启动生产配置容器、检查登录边界和 Caddy 配置；实际运行结果以仓库 Actions 为准。
+- GitHub 首次构建 [35958514561](https://github.com/tztmr/video_web_play/actions/runs/35958514561) 对应提交 `295b0bb`。GitHub 在任何步骤开始前拒绝任务，备注为账号近期付款失败或需要提高消费限额；未获得 Linux 镜像构建/容器启动结果。这是平台执行限制，不能记为构建通过。
 - 尚无目标服务器或域名，未执行公网部署、证书签发和跨地区播放验收。
 
 
