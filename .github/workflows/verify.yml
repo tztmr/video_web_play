@@ -25,26 +25,39 @@ jobs:
           python -m unittest discover -s tests -v
           for file in static/*.js; do node --input-type=module --check < "$file"; done
           bash -n deploy.sh
+          bash -n scripts/deploy_stack.sh
           bash deploy.sh --check --domain video.taco.net --direct
       - name: Build standalone image
         run: docker build -t taco-cinema:ci .
       - name: Start production-configured container
         run: |
+          docker network create taco-ci
           docker run --detach --name taco-smoke \
+            --network taco-ci --network-alias web \
             --env HONGGUO_ENV=production \
             --env HONGGUO_PUBLIC_URL=https://cinema.invalid \
             --env HONGGUO_ALLOWED_HOSTS=cinema.invalid,127.0.0.1,localhost \
             --env HONGGUO_NETWORK_MODE=direct \
-            --publish 127.0.0.1:18787:8787 taco-cinema:ci
-          python scripts/smoke_container.py
+            --env FORWARDED_ALLOW_IPS='*' taco-cinema:ci
+          docker exec taco-smoke python scripts/smoke_container.py http://127.0.0.1:8787
       - name: Validate Caddy configuration
         run: |
           docker run --rm --env DOMAIN=cinema.invalid \
             --volume "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Verify country blocking and real Caddy forwarding
+        run: |
+          docker run --detach --name taco-proxy --network taco-ci \
+            --env DOMAIN=http://:8080 \
+            --volume "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine
+          docker exec taco-smoke python scripts/smoke_country.py http://taco-proxy:8080
       - name: Container logs on failure
         if: failure()
-        run: docker logs taco-smoke 2>/dev/null || true
+        run: |
+          docker logs taco-smoke 2>/dev/null || true
+          docker logs taco-proxy 2>/dev/null || true
       - name: Clean up smoke container
         if: always()
-        run: docker rm -f taco-smoke 2>/dev/null || true
+        run: |
+          docker rm -f taco-smoke taco-proxy 2>/dev/null || true
+          docker network rm taco-ci 2>/dev/null || true

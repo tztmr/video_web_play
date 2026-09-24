@@ -6,23 +6,23 @@
 
 ## 服务器一键部署
 
-在 Linux 服务器上克隆本私有仓库（需要已有 GitHub SSH 访问权限）：
+在 Linux 服务器上，以 root 或具备 sudo 权限的账号执行（默认安装目录 `/opt/taco-cinema`）：
 
 ```bash
-git clone git@github.com:tztmr/video_web_play.git
-cd video_web_play
-bash deploy.sh
+curl -fL --retry 3 https://raw.githubusercontent.com/tztmr/video_web_play/main/deploy.sh -o taco-install.sh && bash taco-install.sh
 ```
 
-按提示填写已解析到服务器的域名和线路。Ubuntu/Debian 缺少 Docker 时自动使用官方 apt 源安装；脚本构建镜像、启动 Caddy HTTPS、等待健康检查和公网 HTTPS 就绪，再打印一次性管理员初始化链接。没有默认管理员密码。
+进入中文菜单，选择「1 一键安装」，按提示填写部署目录、已解析到服务器的域名和出口线路。脚本自动从 `https://github.com/tztmr/video_web_play.git` 拉取源码，安装所需依赖，构建容器与 Caddy HTTPS，再显示一次性管理员初始化链接。没有默认管理员密码。
 
-海外服务器可直接指定参数：
+菜单支持更新、修改域名和线路、状态、日志、启停、备份、初始化链接、版本检查、地址库更新与保留数据卸载。再次执行 `bash taco-install.sh` 会记住部署目录；安装目录中的 `bash deploy.sh` 也可打开菜单。
+
+默认海外代理模式不会自动退回直连；海外服务器可显式选择自己的出口：
 
 ```bash
-bash deploy.sh --domain video.your-domain.com --direct
+bash taco-install.sh --install --directory /opt/taco-cinema --domain video.your-domain.com --direct
 ```
 
-默认海外代理模式不会自动退回直连；代理地址建议按交互提示输入。再次运行会复用 `.env` 和账号/分享数据卷。`bash deploy.sh --check` 可只校验配置。
+**默认禁止大陆 IP 访问所有网页、API 和视频，分享链接也受限制。** 港澳台不在屏蔽范围内，本机 `127.0.0.1` / `::1` 可继续本地观看。地址库随部署下载，按公网出口 IP 判断；说明与运维命令见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 启动
 
@@ -35,6 +35,7 @@ cd video_web_play
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 # macOS 未安装 FFmpeg 时：brew install ffmpeg
+.venv/bin/python scripts/update_geoip.py
 ```
 
 双击 `start.command`，或在终端运行：
@@ -63,6 +64,7 @@ HONGGUO_SOURCE_DIR='/你的路径/红果视频下载' python3 server.py
 
 ## 已实现
 
+- 统一入口拦截大陆 IPv4/IPv6；地址库异常或无法判定地区时拒绝公网访问。
 - 默认登录；密码使用 scrypt 加盐哈希，Cookie 会话可撤销；登录失败次数限制。
 - 管理中心创建/停用观众、重置密码；停用或重置会撤销原会话。
 - 管理员在视频下方设置分享天数并生成链接，默认 0 天永久有效；只允许观看指定短剧，可随时撤销。
@@ -106,4 +108,4 @@ node --input-type=module --check < static/app.js
 
 启动时会补齐旧缓存的索引；只重新封装，不重新编码。
 
-自动化用例覆盖默认登录、初始化一次性、密码/会话、管理权限、停用与重置、分享范围/过期/撤销、视频 Range、播放记录、缓存与取消。真实上游/浏览器检查见 `VALIDATION.md`。
+自动化用例覆盖安装菜单、更新保护、在线备份、大陆访问限制、默认登录、初始化一次性、密码/会话、管理权限、停用与重置、分享范围/过期/撤销、视频 Range、播放记录、缓存与取消。真实上游/浏览器检查见 `VALIDATION.md`。

@@ -91,13 +91,21 @@ def main():
     mode.add_argument('--direct', action='store_true')
     mode.add_argument('--proxy')
     parser.add_argument('--non-interactive', action='store_true')
+    parser.add_argument('--reconfigure', action='store_true')
     args = parser.parse_args()
     try:
         values = read_settings(args.existing)
+        interactive = not args.non_interactive and sys.stdin.isatty()
+        if args.reconfigure and not interactive and not (args.domain or args.direct or args.proxy):
+            raise ValueError('修改配置需要交互终端，或显式指定 --domain / --direct / --proxy。')
+        if args.reconfigure and interactive and args.domain is None:
+            current = values.get('DOMAIN', '')
+            print(f'网站域名 [{current}]：', end='', file=sys.stderr, flush=True)
+            values['DOMAIN'] = input().strip() or current
         if args.domain is not None:
             values['DOMAIN'] = args.domain
         if not values.get('DOMAIN'):
-            if args.non_interactive or not sys.stdin.isatty():
+            if not interactive:
                 raise ValueError('首次部署请指定 --domain 你的域名。')
             print('网站域名（例如 video.your-domain.com）：', end='', file=sys.stderr, flush=True)
             values['DOMAIN'] = input().strip()
@@ -107,15 +115,16 @@ def main():
         elif args.proxy is not None:
             values['HONGGUO_NETWORK_MODE'] = 'overseas'
             values['HONGGUO_UPSTREAM_PROXY'] = args.proxy
-        if 'HONGGUO_NETWORK_MODE' not in values and not args.non_interactive and sys.stdin.isatty():
-            print('线路：1 海外代理（默认）；2 服务器已在海外，使用其出口 [1/2]：', end='', file=sys.stderr, flush=True)
-            choice = input().strip()
-            if choice not in ('', '1', '2'):
+        if interactive and not (args.direct or args.proxy is not None) and ('HONGGUO_NETWORK_MODE' not in values or args.reconfigure):
+            default = '2' if values.get('HONGGUO_NETWORK_MODE') == 'direct' else '1'
+            print(f'线路：1 海外代理；2 服务器已在海外，使用其出口 [{default}]：', end='', file=sys.stderr, flush=True)
+            choice = input().strip() or default
+            if choice not in ('1', '2'):
                 raise ValueError('线路选项无效，请重新运行。')
             values['HONGGUO_NETWORK_MODE'] = 'direct' if choice == '2' else 'overseas'
-        if values.get('HONGGUO_NETWORK_MODE', 'overseas') == 'overseas' and not values.get('HONGGUO_UPSTREAM_PROXY') and not args.non_interactive and sys.stdin.isatty():
+        if interactive and values.get('HONGGUO_NETWORK_MODE', 'overseas') == 'overseas' and args.proxy is None and (not values.get('HONGGUO_UPSTREAM_PROXY') or args.reconfigure):
             import getpass
-            values['HONGGUO_UPSTREAM_PROXY'] = getpass.getpass('海外代理地址（输入隐藏）：').strip()
+            values['HONGGUO_UPSTREAM_PROXY'] = getpass.getpass('海外代理地址（输入隐藏，留空保留已有地址）：').strip() or values.get('HONGGUO_UPSTREAM_PROXY', '')
         values = validate_settings(values)
         # Single-quoted dotenv values preserve literal $ in proxy credentials.
         content = '# TACO小剧场部署配置；请勿提交此文件。\n'

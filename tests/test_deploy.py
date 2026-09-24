@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.deploy_config import read_settings, validate_settings
+from scripts.deploy_config import main as configure
 from scripts.check_https import check
 
 
@@ -56,6 +57,22 @@ class DeployConfigTests(unittest.TestCase):
             self.assertFalse(sentinel.exists())
             self.assertFalse(output.exists())
 
+    def test_menu_reconfiguration_preserves_secrets_or_explicitly_switches_exit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            existing, output = Path(folder)/'.env', Path(folder)/'next.env'
+            existing.write_text("DOMAIN='video.taco.net'\nHONGGUO_NETWORK_MODE='overseas'\nHONGGUO_UPSTREAM_PROXY='socks5://user:secret@proxy.taco.net:1080'\nCOMPOSE_PROJECT_NAME='existing-cinema'\n")
+            args = ['deploy_config', '--existing', str(existing), '--output', str(output), '--reconfigure']
+            with patch.object(sys, 'argv', args), patch('sys.stdin.isatty', return_value=True), patch('builtins.input', side_effect=['', '']), patch('getpass.getpass', return_value=''):
+                configure()
+            self.assertEqual(read_settings(existing), read_settings(output))
+            with patch.object(sys, 'argv', args), patch('sys.stdin.isatty', return_value=True), patch('builtins.input', side_effect=['next.taco.net', '2']):
+                configure()
+            settings = read_settings(output)
+            self.assertEqual(settings['DOMAIN'], 'next.taco.net')
+            self.assertEqual(settings['HONGGUO_NETWORK_MODE'], 'direct')
+            self.assertEqual(settings['HONGGUO_UPSTREAM_PROXY'], '')
+            self.assertEqual(settings['COMPOSE_PROJECT_NAME'], 'existing-cinema')
+
     def test_legacy_project_name_keeps_existing_data_volumes(self):
         with tempfile.TemporaryDirectory() as folder:
             env = Path(folder)/'.env'
@@ -76,7 +93,7 @@ class DeployShellTests(unittest.TestCase):
     def test_deploy_update_and_https_failure_preserve_data_and_report_correctly(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            for path in ('deploy.sh', 'compose.yaml', 'scripts/deploy_config.py', 'scripts/check_https.py', 'vendor/hongguo/endpoints/duanju.py'):
+            for path in ('scripts/deploy_stack.sh', 'compose.yaml', 'scripts/deploy_config.py', 'scripts/check_https.py', 'vendor/hongguo/endpoints/duanju.py'):
                 target = root/path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT/path, target)
@@ -94,13 +111,13 @@ class DeployShellTests(unittest.TestCase):
                 path.chmod(0o755)
             environ = {**os.environ, 'PATH':str(binary)+os.pathsep+os.environ['PATH'], 'DEPLOY_TEST_LOG':str(log), 'DEPLOY_PYTHON':sys.executable, 'DEPLOY_HTTPS_RESULT':'0'}
             def deploy(*args):
-                return subprocess.run(['bash', str(root/'deploy.sh'), '--no-install', *args], env=environ, capture_output=True, text=True)
+                return subprocess.run(['bash', str(root/'scripts/deploy_stack.sh'), '--no-install', *args], env=environ, capture_output=True, text=True)
             first = deploy('--domain', 'video.taco.net', '--direct')
             self.assertEqual(first.returncode, 0, first.stdout+first.stderr)
             before = (root/'.env').read_bytes()
             self.assertEqual((root/'.env').stat().st_mode & 0o777, 0o600)
             calls = log.read_text()
-            self.assertLess(calls.index('build --pull web'), calls.index('up -d --wait'))
+            self.assertLess(calls.index('build --pull --build-arg GEOIP_MONTH='), calls.index('up -d --wait'))
             self.assertLess(calls.index('HTTPS probe'), calls.index('setup_link.py --if-needed'))
             repeat = deploy()
             self.assertEqual(repeat.returncode, 0, repeat.stdout+repeat.stderr)
@@ -117,7 +134,7 @@ class DeployShellTests(unittest.TestCase):
     def test_check_mode_never_starts_containers_or_changes_existing_config(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            for path in ('deploy.sh', 'compose.yaml', 'scripts/deploy_config.py', 'vendor/hongguo/endpoints/duanju.py'):
+            for path in ('scripts/deploy_stack.sh', 'compose.yaml', 'scripts/deploy_config.py', 'vendor/hongguo/endpoints/duanju.py'):
                 target = root/path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT/path, target)
@@ -130,7 +147,7 @@ class DeployShellTests(unittest.TestCase):
             docker = binary/'docker'
             docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DEPLOY_TEST_LOG"\ncase "$*" in\n  "compose version"|*"config --quiet") exit 0;;\n  *) exit 91;;\nesac\n')
             docker.chmod(0o755)
-            run = subprocess.run(['bash', str(root/'deploy.sh'), '--check'], capture_output=True, text=True, env={**os.environ, 'PATH':str(binary)+os.pathsep+os.environ['PATH'], 'DEPLOY_TEST_LOG':str(log)})
+            run = subprocess.run(['bash', str(root/'scripts/deploy_stack.sh'), '--check'], capture_output=True, text=True, env={**os.environ, 'PATH':str(binary)+os.pathsep+os.environ['PATH'], 'DEPLOY_TEST_LOG':str(log)})
             self.assertEqual(run.returncode, 0, run.stdout+run.stderr)
             self.assertEqual(env.read_bytes(), before)
             self.assertNotIn('build', log.read_text())

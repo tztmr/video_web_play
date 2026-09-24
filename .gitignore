@@ -14,3 +14,5 @@ output/
 *.pem
 *.key
 .deploy-env.*
+backups/
+*.mmdb

@@ -8,6 +8,12 @@
         X-Content-Type-Options "nosniff"
     }
     reverse_proxy web:8787 {
+        # Overwrite visitor-supplied forwarding headers with the TCP peer.
+        header_up X-Forwarded-For {remote_host}
+        header_up -X-Real-IP
+        header_up -CF-Connecting-IP
+        header_up -True-Client-IP
+        header_up -Forwarded
         transport http {
             response_header_timeout 330s
         }

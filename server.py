@@ -31,13 +31,14 @@ if not os.environ.get("HONGGUO_PLAYBACK_TOOLS_DIR"):
         os.environ["HONGGUO_PLAYBACK_TOOLS_DIR"] = str(Path(ffmpeg).parent)
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from core.http_client import PureSignedClient
 from core.playback import while_connected
 from endpoints import duanju, web_catalog
 from accounts import Accounts
+from country_access import CountryAccess
 from overseas import OverseasRoute
 from video_loader import load_video, video_model
 from playback_jobs import PlaybackJobs, publish_cache
@@ -62,9 +63,10 @@ def trim_cache(keep: Path | None = None):
 @asynccontextmanager
 async def lifespan(app):
     app.state.accounts = Accounts(DATA)
+    app.state.country_access = CountryAccess(os.environ.get('TACO_GEOIP_DATABASE', str(DATA/'geoip-country.mmdb')))
     route = OverseasRoute()
-    await route.start()
     try:
+        await route.start()
         app.state.client = PureSignedClient(timeout=15)
         from core.video_download import VIDEO_UA
         app.state.video_client = httpx.AsyncClient(
@@ -109,7 +111,10 @@ async def lifespan(app):
             await app.state.client.close()
             await app.state.video_client.aclose()
     finally:
-        await route.stop()
+        try:
+            await route.stop()
+        finally:
+            app.state.country_access.close()
 
 
 app = FastAPI(title="TACO小剧场", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -123,6 +128,15 @@ app.include_router(auth_router)
 
 @app.middleware("http")
 async def access_control(request: Request, call_next):
+    # Uvicorn receives the peer address set by our private Caddy hop. Headers such
+    # as X-Real-IP and CF-Connecting-IP supplied by visitors are never read here.
+    status = request.app.state.country_access.status(request.client.host if request.client else None)
+    if status != 200:
+        message = '暂不支持中国大陆 IP 访问。' if status == 403 else '暂时无法确认访问地区，请稍后再试。'
+        headers = {'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff'}
+        if 'text/html' in request.headers.get('accept', ''):
+            return HTMLResponse('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TACO小剧场</title><body><h1>TACO小剧场</h1><p>'+message+'</p><small><a href="https://db-ip.com">IP Geolocation by DB-IP</a></small></body></html>', status_code=status, headers=headers)
+        return JSONResponse({'detail':message, 'code':'REGION_BLOCKED' if status == 403 else 'REGION_UNAVAILABLE'}, status_code=status, headers=headers)
     origin = request.headers.get("origin")
     if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != (PUBLIC_URL or str(request.base_url).rstrip('/')):
         return JSONResponse({"detail": "请求来源不匹配，请从网站页面操作"}, status_code=403)
@@ -374,7 +388,9 @@ async def shared_media(request: Request, token: str, filename: str):
 
 
 @app.get('/healthz')
-async def readiness():
+async def readiness(request: Request):
+    if os.environ.get('HONGGUO_ENV') == 'production' and request.app.state.country_access.status('223.5.5.5') != 403:
+        return JSONResponse({'status': 'unavailable', 'code': 'REGION_UNAVAILABLE'}, status_code=503)
     return {'status': 'ok'}
 
 
