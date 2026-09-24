@@ -96,7 +96,7 @@ class CountryBoundaryTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(response.status_code, 403, (ip, path))
                     self.assertEqual(response.json()['code'], 'REGION_BLOCKED')
                     self.assertEqual(response.headers['cache-control'], 'no-store')
-                for path in ('/api/auth/login', '/api/play/stream?item_id=123', '/api/shared/'+self.token+'/stream?item_id=123'):
+                for path in ('/api/auth/login', '/api/play/stream?item_id=123', '/api/shared/'+self.token+'/stream?item_id=123', '/api/play/source?item_id=123', '/api/shared/'+self.token+'/source?item_id=123'):
                     self.assertEqual((await client.post(path)).json()['code'], 'REGION_BLOCKED')
                 html = await client.get('/login', headers={'Accept':'text/html'})
                 self.assertIn('暂不支持中国大陆 IP', html.text)

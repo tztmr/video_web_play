@@ -40,7 +40,7 @@ from endpoints import duanju, web_catalog
 from accounts import Accounts
 from country_access import CountryAccess
 from overseas import OverseasRoute
-from video_loader import load_video, video_model
+from video_loader import load_video, video_model, browser_source
 from playback_jobs import PlaybackJobs, publish_cache
 from auth_routes import router as auth_router, COOKIE, require_admin
 
@@ -153,7 +153,7 @@ async def access_control(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers['Cache-Control'] = 'no-store'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data:; media-src 'self' blob:; connect-src 'self' https://qznovelvod.com https://*.qznovelvod.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     return response
 
 
@@ -199,6 +199,22 @@ class ManagedStream(StreamingResponse):
                     await self.body_iterator.aclose()
                 finally:
                     await self.cleanup()
+
+
+async def direct_descriptor(request, item_id, definition, hevc):
+    try:
+        return await browser_source(request, item_id, definition, hevc)
+    except (ValueError, RuntimeError) as error:
+        raise HTTPException(409, str(error)) from None
+    except httpx.HTTPError:
+        raise HTTPException(502, '视频地址暂时不可用，请重试') from None
+
+
+@app.post('/api/play/source')
+async def direct_video(request: Request, item_id: str = Query(pattern=r'^\d{1,24}$'), definition: Literal['1080p', '720p', '540p', '480p', '360p'] = '720p', hevc: bool = False):
+    if not request.app.state.accounts.limit('direct:'+str(request.state.user['id']), maximum=60):
+        raise HTTPException(429, '请求过于频繁')
+    return await direct_descriptor(request, item_id, definition, hevc)
 
 
 @app.post('/api/play/stream')
@@ -346,6 +362,18 @@ async def shared_play(request: Request, token: str, item_id: str = Query(pattern
     valid_share(request, token)
     result['url'] = result['url'].replace('/media/', '/shared-media/'+token+'/')
     return result
+
+
+@app.post('/api/shared/{token}/source')
+async def shared_direct(request: Request, token: str, item_id: str = Query(pattern=r'^\d{1,24}$'), definition: Literal['1080p', '720p', '540p', '480p', '360p'] = '720p', hevc: bool = False):
+    share = valid_share(request, token)
+    if item_id not in {str(ep['item_id']) for ep in share['episodes']}:
+        raise HTTPException(403, '此链接只允许观看分享的短剧')
+    if not request.app.state.accounts.limit('share-direct:'+token+':'+request.client.host, maximum=60):
+        raise HTTPException(429, '请求过于频繁')
+    descriptor = await direct_descriptor(request, item_id, definition, hevc)
+    valid_share(request, token)  # Metadata lookup may outlast expiry or revocation.
+    return descriptor
 
 
 @app.post('/api/shared/{token}/stream')

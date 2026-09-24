@@ -60,6 +60,7 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.guest.post('/api/play?item_id=1')).status_code, 401)
         self.assertEqual((await self.guest.post('/api/play/prefetch?item_id=1')).status_code, 401)
         self.assertEqual((await self.guest.post('/api/play/warm?item_id=1')).status_code, 401)
+        self.assertEqual((await self.guest.post('/api/play/source?item_id=1')).status_code, 401)
         self.assertEqual((await self.guest.get('/login')).status_code, 200)
         self.assertEqual((await self.guest.get('/healthz')).status_code, 200)
 
@@ -186,6 +187,51 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
             r=await admin.post('/api/admin/shares',json={'book_id':'999','title':'test'})
         self.assertEqual(r.status_code,502)
         self.assertEqual(self.db.shares(),[])
+
+    async def test_direct_descriptor_downloads_no_media_and_enforces_share_scope(self):
+        admin = await self.admin()
+        link, token = await self.share(admin)
+        model = {'sources':[{'definition':'720p', 'codec_type':'h264', 'size':8000000,
+                  'urls':['http://v3-reading-video.qznovelvod.com/video.mp4?test=1'], 'spade_a':'01'*16}]}
+        with patch('video_loader.video_model', AsyncMock(return_value=model)) as metadata, patch('video_loader.download_ranges', AsyncMock(side_effect=AssertionError('Server downloaded video'))) as download, patch('video_loader.prepare_streaming_video', AsyncMock(side_effect=AssertionError('Server transcoded video'))) as transcode:
+            response = await admin.post('/api/play/source?item_id=123')
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['delivery'], 'direct')
+            self.assertEqual(response.json()['urls'], ['https://v3-reading-video.qznovelvod.com/video.mp4?test=1'])
+            self.assertEqual(response.json()['key'], '01'*16)
+            self.assertEqual(response.headers['cache-control'], 'no-store')
+            guest = await self.guest.post('/api/shared/'+token+'/source?item_id=123')
+            self.assertEqual(guest.status_code, 200, guest.text)
+            calls = metadata.await_count
+            self.assertEqual((await self.guest.post('/api/shared/'+token+'/source?item_id=456')).status_code, 403)
+            self.assertEqual((await admin.post('/api/play/source?item_id=123', headers={'Origin':'https://unrelated.invalid'})).status_code, 403)
+            await admin.delete('/api/admin/shares/'+link['id'])
+            self.assertEqual((await self.guest.post('/api/shared/'+token+'/source?item_id=123')).status_code, 410)
+            self.assertEqual(metadata.await_count, calls)
+            download.assert_not_awaited()
+            transcode.assert_not_awaited()
+            self.assertFalse(list(self.cache.iterdir()))
+
+    async def test_expired_share_cannot_obtain_a_new_direct_source(self):
+        admin = await self.admin()
+        _, token = await self.share(admin)
+        with self.db.db() as db:
+            db.execute('UPDATE shares SET expires=? WHERE token=?', (time.time()-1, token))
+        with patch('server.browser_source', AsyncMock()) as source:
+            self.assertEqual((await self.guest.post('/api/shared/'+token+'/source?item_id=123')).status_code, 410)
+            source.assert_not_awaited()
+
+    async def test_share_revoked_during_metadata_lookup_withholds_direct_source(self):
+        admin = await self.admin()
+        _, token = await self.share(admin)
+        async def lookup(*args):
+            with self.db.db() as db:
+                db.execute('UPDATE shares SET revoked=1 WHERE token=?', (token,))
+            return {'urls':['https://v3.qznovelvod.com/test.mp4'], 'key':'01'*16}
+        with patch('server.browser_source', side_effect=lookup):
+            response = await self.guest.post('/api/shared/'+token+'/source?item_id=123')
+        self.assertEqual(response.status_code, 410)
+        self.assertNotIn('key', response.json())
 
     async def test_secure_production_cookie(self):
         with patch('auth_routes.SECURE',True):

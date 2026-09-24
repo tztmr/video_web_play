@@ -1,4 +1,4 @@
-import {openPlayback,releasePlayback,prefetchNext} from './playback.js';
+import {openPlayback,releasePlayback,prefetchNext,playbackLabel} from './playback.js';
 import {request as accountRequest,jsonOptions,copyLink} from './auth-client.js';
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -122,11 +122,11 @@ async function openPlayer(item) {
 }
 async function playEpisode(index, resume=0) {
   if(index<0||index>=player.episodes.length)return;saveProgress(true);player.controller?.abort();const version=++player.version;stopVideo();player.index=index;episodeButtons();$('#playing-label').textContent=`第 ${index+1} / ${player.episodes.length} 集`;
-  playerStatus(`正在准备第 ${index+1} 集，请稍候…`,true);$('#playback-hint').textContent='画面就绪后会自动播放，后续内容将继续加载。';
+  playerStatus(`正在准备第 ${index+1} 集，请稍候…`,true);$('#playback-hint').textContent=$('#delivery').value==='direct'?'视频由当前设备直接获取，不经过网站服务器。':'兼容模式通过网站服务器处理和传输视频。';
   const controller=new AbortController();player.controller=controller;const timer=setTimeout(()=>controller.abort('timeout'),305000);
   try {
-    await openPlayback(video,{endpoint:'/api/play/stream',fallback:'/api/play',params:{item_id:player.episodes[index].item_id,definition:$('#quality').value},signal:controller.signal,resume,rate:Number($('#speed').value),
-      onInfo:data=>{if(version===player.version)$('#playback-hint').textContent=`${data.definition.toUpperCase()} · ${data.cached?'已从缓存加载':data.streaming?'正在加载后续画面，可先观看':'视频已准备好'}`;},
+    await openPlayback(video,{endpoint:'/api/play/stream',fallback:'/api/play',delivery:$('#delivery').value,params:{item_id:player.episodes[index].item_id,definition:$('#quality').value},signal:controller.signal,resume,rate:Number($('#speed').value),
+      onInfo:data=>{if(version===player.version)$('#playback-hint').textContent=playbackLabel(data);},
       onReady:()=>{if(version!==player.version)return;player.loaded=true;$('#player-status').innerHTML='';saveProgress(true);}
     });
     if(version===player.version)prefetchNext(video,{endpoint:'/api/play/prefetch',itemId:player.episodes[index+1]?.item_id,definition:$('#quality').value,signal:controller.signal});
@@ -145,9 +145,10 @@ $('#load-more').addEventListener('click',()=>{if(!state.loading&&state.hasMore)l
 $('#continue-list').addEventListener('click',e=>{const b=e.target.closest('[data-resume]');if(b&&history[b.dataset.resume])openPlayer(history[b.dataset.resume]);});$('#all-history').addEventListener('click',()=>navigate('history'));
 $('#episodes').addEventListener('click',e=>{const b=e.target.closest('[data-episode]');if(b)playEpisode(Number(b.dataset.episode));});$('#previous').addEventListener('click',()=>playEpisode(player.index-1));$('#next').addEventListener('click',()=>playEpisode(player.index+1));
 $('#player-favorite').addEventListener('click',()=>player.item&&toggleFavorite(player.item));$('#close-player').addEventListener('click',closePlayer);$('#player-dialog').addEventListener('cancel',e=>{e.preventDefault();closePlayer();});
+$('#delivery').addEventListener('change',()=>{if(player.index>=0)playEpisode(player.index,video.currentTime||0);});
 $('#quality').addEventListener('change',()=>{if(player.index>=0)playEpisode(player.index,video.currentTime||0);});$('#speed').addEventListener('change',()=>video.playbackRate=Number($('#speed').value));
 video.addEventListener('timeupdate',()=>saveProgress());video.addEventListener('pause',()=>saveProgress(true));video.addEventListener('ended',()=>{saveProgress(true);if($('#auto-next').checked&&player.index<player.episodes.length-1)playEpisode(player.index+1);else if(player.index===player.episodes.length-1)$('#playback-hint').textContent='这段故事已看完，去发现下一部好剧吧。';});
-video.addEventListener('error',()=>{if(!video.getAttribute('src')||!player.item)return;playerStatus('播放失败，缓存可能已清理。请重新准备视频后再试。',false,()=>playEpisode(player.index));});
+video.addEventListener('error',()=>{if(!video.getAttribute('src')||!player.item)return;playerStatus($('#delivery').value==='direct'?'这台设备暂时无法直接播放，请选择兼容模式。':'播放失败，请重新准备视频后再试。',false,()=>playEpisode(player.index));});
 window.addEventListener('pagehide',()=>saveProgress(true));document.addEventListener('visibilitychange',()=>{if(document.hidden)saveProgress(true);});
 async function checkHealth(){try{const result=await api('/api/health');$('#connection-dot').classList.toggle('ready',result.playback_ready);$('#connection-label').textContent=result.playback_ready?'本地服务已连接':'缺少 FFmpeg 播放组件';if(!result.playback_ready)notify('请安装 FFmpeg，或设置 HONGGUO_PLAYBACK_TOOLS_DIR 后重启服务');}catch{$('#connection-label').textContent='本地服务未连接';}}
 $('#share-form').addEventListener('submit',async event=>{event.preventDefault();if(!player.item)return;const item=player.item,version=player.version;$('#share-create').disabled=true;$('#share-message').textContent='正在核对剧集目录…';try{const data=await accountRequest('/api/admin/shares',jsonOptions({book_id:idOf(item),title:item.title,cover:item.cover||'',abstract:item.abstract||'',kind:item.kind||'drama',days:Number($('#share-days').value)}));if(version!==player.version){notify('链接已生成，可在管理中心查看');return;}const url=location.origin+data.path;$('#share-url').value=url;$('#share-copy').disabled=false;$('#share-message').textContent=(data.expires?`有效期至 ${new Date(data.expires*1000).toLocaleString()}`:'永久有效')+' · 访客免登录观看这部剧，可在管理中心撤销。';}catch(error){$('#share-message').textContent=error.message;}finally{$('#share-create').disabled=false;}});

@@ -6,3 +6,5 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .geo-credit{font-size:10px;color:#9993a2;white-space:nowrap}.geo-credit:hover{color:#ddd}.geo-footer{text-align:center;margin:22px 0 10px}.page-footer{flex-wrap:wrap;row-gap:12px}.page-footer .geo-credit{margin-left:auto}
+
+.video-options{flex-wrap:wrap}

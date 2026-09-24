@@ -1,7 +1,15 @@
-// Same MediaSource flow as the downloader: append fragmented MP4 as it arrives.
+// Browser direct playback by default; the server's MediaSource flow is opt-in.
 const sessions=new WeakMap();
+export function playbackLabel(data){
+  const quality=String(data.definition||'').toUpperCase();
+  if(data.delivery==='direct'){
+    const action=data.stage==='ready'?'当前设备直接播放':data.stage==='prepare'?'正在准备画面':'正在直连取片';
+    return `${quality} · 源站直连 · ${action}${data.stage!=='ready'&&data.progress?` ${Math.round(data.progress*100)}%`:''}`;
+  }
+  return `${quality} · 兼容模式（通过服务器） · ${data.cached?'缓存已就绪':data.streaming?'后续画面加载中':'视频已准备好'}`;
+}
 export function prefetchNext(video,{endpoint,itemId,definition,signal}){
-  if(!itemId||signal.aborted||navigator.connection?.saveData)return;
+  if(!itemId||signal.aborted||navigator.connection?.saveData||video.dataset.playbackTransport==='direct')return;
   let sent=false,timer;
   const clear=()=>{clearTimeout(timer);video.removeEventListener('playing',schedule);signal.removeEventListener('abort',clear);};
   const send=()=>{if(signal.aborted||video.paused||video.ended||sent)return;sent=true;clear();void fetch(endpoint+'?'+new URLSearchParams({item_id:itemId,definition}),{method:'POST',signal,cache:'no-store'}).then(response=>response.json()).catch(()=>{});};
@@ -16,14 +24,34 @@ function event(target,name,signal,action){return new Promise((resolve,reject)=>{
   target.addEventListener(name,done,{once:true});target.addEventListener('error',failed,{once:true});signal.addEventListener('abort',abort,{once:true});
   if(signal.aborted)abort();else if(action){try{action();}catch(error){cleanup();reject(error);}}
 });}
-export async function openPlayback(video,{endpoint,fallback,params,signal,resume=0,rate=1,onReady=()=>{},onInfo=()=>{}}){
-  releasePlayback(video);let objectURL=null,reader=null;
+export async function openPlayback(video,{endpoint,fallback,params,signal,resume=0,rate=1,delivery='direct',onReady=()=>{},onInfo=()=>{}}){
+  releasePlayback(video);let objectURL=null,reader=null,worker=null;
+  video.dataset.playbackTransport=delivery;
   const ready=()=>{if(signal.aborted)return;onReady();video.play().catch(()=>{});};
   const metadata=()=>{if(signal.aborted)return;video.playbackRate=rate;if(resume>0&&Number.isFinite(video.duration))video.currentTime=Math.min(resume,Math.max(0,video.duration-1));};
-  const cleanup=()=>{video.removeEventListener('canplay',ready);video.removeEventListener('loadedmetadata',metadata);signal.removeEventListener('abort',cleanup);void reader?.cancel().catch(()=>{});if(objectURL){URL.revokeObjectURL(objectURL);objectURL=null;}};
+  const cleanup=()=>{worker?.terminate();worker=null;video.removeEventListener('canplay',ready);video.removeEventListener('loadedmetadata',metadata);signal.removeEventListener('abort',cleanup);void reader?.cancel().catch(()=>{});if(objectURL){URL.revokeObjectURL(objectURL);objectURL=null;}};
   sessions.set(video,cleanup);signal.addEventListener('abort',cleanup,{once:true});
   video.addEventListener('canplay',ready,{once:true});video.addEventListener('loadedmetadata',metadata,{once:true});
-  async function fetchResponse(path){const response=await fetch(path+'?'+new URLSearchParams(params),{method:'POST',signal,cache:'no-store'});if(!response.ok){const data=await response.json().catch(()=>({}));const error=new Error(data.detail||data.msg||`视频加载失败（${response.status}）`);error.status=response.status;throw error;}return response;}
+  async function fetchResponse(path,extra={}){const response=await fetch(path+'?'+new URLSearchParams({...params,...extra}),{method:'POST',signal,cache:'no-store'});if(!response.ok){const data=await response.json().catch(()=>({}));const error=new Error(data.detail||data.msg||`视频加载失败（${response.status}）`);error.status=response.status;throw error;}return response;}
+  if(delivery==='direct'){
+    if(typeof Worker==='undefined'||!globalThis.crypto?.subtle)throw new Error('此浏览器暂不支持直接播放，请使用 HTTPS 或选择兼容模式');
+    const hevc=Boolean(video.canPlayType('video/mp4; codecs="hvc1.1.6.L120.B0"')||video.canPlayType('video/mp4; codecs="hev1.1.6.L120.B0"'));
+    const descriptor=await (await fetchResponse(endpoint.replace(/\/stream$/,'/source'),{hevc})).json();signal.throwIfAborted();
+    onInfo({...descriptor,stage:'download',progress:0});
+    const buffer=await new Promise((resolve,reject)=>{
+      worker=new Worker('/static/direct-worker.js',{type:'module'});
+      const abort=()=>{worker?.terminate();reject(new DOMException('Aborted','AbortError'));};
+      const finish=()=>{signal.removeEventListener('abort',abort);worker?.terminate();worker=null;};
+      worker.onmessage=({data})=>{if(data.error){finish();reject(new Error(data.error));}else if(data.buffer){finish();resolve(data.buffer);}else onInfo({...descriptor,...data});};
+      worker.onerror=()=>{finish();reject(new Error('浏览器准备视频失败，请选择兼容模式'));};
+      signal.addEventListener('abort',abort,{once:true});
+      if(signal.aborted)abort();else worker.postMessage(descriptor);
+    });
+    signal.throwIfAborted();objectURL=URL.createObjectURL(new Blob([buffer],{type:'video/mp4'}));
+    try{await event(video,'canplay',signal,()=>{video.src=objectURL;video.load();});}
+    catch(error){if(signal.aborted)throw error;throw new Error('此设备无法直接播放该格式，请手动选择兼容模式');}
+    onInfo({...descriptor,stage:'ready'});return;
+  }
   const useMSE=typeof MediaSource!=='undefined';
   let response=await fetchResponse(useMSE?endpoint:fallback);signal.throwIfAborted();
   if(response.headers.get('content-type')?.includes('application/json')){const data=await response.json();signal.throwIfAborted();onInfo({...data,streaming:false});video.src=data.url;video.load();return;}

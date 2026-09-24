@@ -1,11 +1,41 @@
 """Website playback transport; reuse the downloader's source selection and codecs."""
 import asyncio
 import time
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi.responses import JSONResponse, StreamingResponse
 from endpoints import duanju
 from core.playback import prepare_streaming_video
+
+
+async def browser_source(request, item_id, definition, hevc=False):
+    """Return only the authorized episode's small playback descriptor, no media."""
+    data = await video_model(request, item_id)
+    codecs = {'h264', 'avc', 'avc1', 'avc3'}
+    if hevc:
+        codecs |= {'h265', 'hevc', 'hvc1', 'hev1', 'bytevc1'}
+    usable = [source for source in data['sources']
+              if str(source.get('codec_type', '')).lower().replace('.', '') in codecs]
+    if not usable:
+        raise ValueError('当前浏览器不支持这集的直连格式，请在播放方式中选择兼容模式')
+    source = duanju._pick_source(usable, definition, prefer_h264=True, compatible_only=True)
+    urls = []
+    for url in source['urls']:
+        parts = urlsplit(url)
+        # Match the browser CSP as well; never hand out arbitrary fetch targets.
+        host = parts.hostname or ''
+        if (parts.scheme in ('http', 'https') and not parts.username and not parts.password
+                and parts.port in (None, 80, 443)
+                and (host == 'qznovelvod.com' or host.endswith('.qznovelvod.com'))):
+            urls.append(urlunsplit(('https', host, parts.path, parts.query, '')))
+    if not urls:
+        raise ValueError('这集的视频源暂不支持浏览器直连，请选择兼容模式')
+    size = int(source.get('size') or 0)
+    if size > 256*1024**2:
+        raise ValueError('这集较大，请选择兼容模式播放')
+    return {'urls': list(dict.fromkeys(urls))[:4], 'key': duanju.derive_key_from_spade_a(source['spade_a']),
+            'definition': source['definition'], 'codec': source['codec_type'], 'size': size, 'delivery': 'direct'}
 
 
 async def video_model(request, item_id):
