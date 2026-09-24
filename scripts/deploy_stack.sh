@@ -128,7 +128,11 @@ printf '正在构建 TACO小剧场…\n'
 compose build --pull --build-arg "GEOIP_MONTH=$(date -u +%Y-%m)" web
 compose pull caddy
 install -m 600 "$TEMP_DIR/.env" "$PROJECT_DIR/.env"
-compose up -d --wait --wait-timeout 180
+if ! compose up -d --wait --wait-timeout 180; then
+  printf '容器启动或健康检查失败；已有配置和数据卷保留。\n' >&2
+  printf '在任意目录查看本项目日志：bash %q --logs\n' "$PROJECT_DIR/deploy.sh" >&2
+  exit 1
+fi
 
 # Check the public HTTPS endpoint, not just whether container processes exist.
 printf '正在等待 https://%s 的 HTTPS 证书与访问检查…\n' "$DOMAIN"

@@ -77,6 +77,10 @@ esac
 
     def test_standalone_clone_saved_directory_update_and_dirty_tree(self):
         self.install()
+        # Preserve the installer's private host checkout; Docker must normalize
+        # its own runtime copies instead of exposing config/backup directories.
+        self.assertEqual((self.target/'server.py').stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.target/'scripts').stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.git(self.target, 'config', '--get', 'remote.origin.url'), REPO)
         self.assertEqual((self.state/'install-dir').read_text().strip(), str(self.target))
         self.assertEqual((self.state/'install-dir').stat().st_mode & 0o777, 0o600)

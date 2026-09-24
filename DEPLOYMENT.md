@@ -104,10 +104,14 @@ bash taco-install.sh --install --domain video.your-domain.com --proxy socks5://p
 
 ## 故障与验证
 
+若日志出现 `python: can't open file '/app/server.py': [Errno 13] Permission denied`，是旧镜像继承了安装脚本 `umask 077` 产生的源码权限，普通容器用户无法读取。新镜像会在内部修正程序文件的读取权限，并在构建阶段以运行用户检查导入与国家库；宿主机 `.env`、备份和数据卷权限不变。运行原来的 `bash taco-install.sh --update`（无需进入安装目录），或进入项目目录执行 `bash deploy.sh --update`，重新构建即可，不需要删除卷或重新初始化账号。
+
+如果停留在 `/root` 等非项目目录，`docker compose logs` 会提示找不到配置。使用原安装脚本的 `--logs`（读取已保存的安装目录），或默认项目名下直接运行 `docker logs --tail=80 taco-cinema-web-1`。启动失败时新部署脚本也会显示带绝对路径的日志命令。
+
 容器启动但 HTTPS 失败时，检查域名解析、80/443、错误 AAAA、端口占用和 Caddy 日志。修正后再次执行安装或更新。如果 HTTPS 检查请求的出口为大陆 IP，脚本会确认正确的地区拒绝响应并明确提示；这不表示大陆浏览器能够播放。
 
 当前使用单 web 进程，不支持直接增加多 worker。兼容模式只有一个视频准备名额，同一集共享下载和转换，其承载能力取决于服务器带宽、磁盘和码率；直连模式不占用该名额，播放速度取决于观众到源站的网络和设备解码能力。
 
-GitHub Actions 检查 Python 用例、前端和 Shell 语法、Compose 配置，构建 Linux 镜像并验证登录、真实国家库、IPv4/IPv6 拦截与 Caddy 请求头防伪。结果以仓库 Actions 实际运行状态为准。
+GitHub Actions 检查 Python 用例、前端和 Shell 语法、Compose 配置，使用 `umask 077` 克隆出的真实受限权限目录构建 Linux 镜像，验证 UID 10001 启动、静态播放模块、数据卷重启保留、登录、真实国家库、IPv4/IPv6 拦截与 Caddy 请求头防伪。结果以仓库 Actions 实际运行状态为准。
 
 尚未连接目标美国服务器或域名验收。上线后用真实大陆网络确认网站返回 403，用海外网络检查初始化、登录、匿名分享、撤销、直连播放、拖动和切集；浏览器网络记录应看到源站视频请求以及小体积 `/source` 响应，不应出现 `/stream`、`/media/` 或 `/prefetch` 请求。再手动切换兼容模式检查服务器传输。单机代理或模拟来源地址不能代替真实地区客户端验收。

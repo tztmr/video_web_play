@@ -102,7 +102,7 @@ class DeployShellTests(unittest.TestCase):
             log = root/'calls.log'
             programs = {
                 'uname': '#!/bin/sh\necho Linux\n',
-                'docker': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DEPLOY_TEST_LOG"\ncase "$*" in\n  *"up --help") echo --wait-timeout;;\n  *"exec -T web python scripts/setup_link.py --if-needed") echo "setup checked";;\nesac\n',
+                'docker': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DEPLOY_TEST_LOG"\ncase "$*" in\n  *"up --help") echo --wait-timeout;;\n  *"up -d --wait "*) exit "${DEPLOY_UP_RESULT:-0}";;\n  *"exec -T web python scripts/setup_link.py --if-needed") echo "setup checked";;\nesac\n',
                 'python3': '#!/bin/sh\ncase "$1" in\n  */check_https.py) printf "HTTPS probe\\n" >> "$DEPLOY_TEST_LOG"; exit "$DEPLOY_HTTPS_RESULT";;\n  *) exec "$DEPLOY_PYTHON" "$@";;\nesac\n',
             }
             for name, text in programs.items():
@@ -129,6 +129,17 @@ class DeployShellTests(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0)
             self.assertNotIn('TACO小剧场已启动', failed.stdout)
             self.assertNotIn('setup_link.py', log.read_text())
+            self.assertEqual((root/'.env').read_bytes(), before)
+            log.write_text('')
+            environ['DEPLOY_UP_RESULT'] = '1'
+            unhealthy = deploy()
+            self.assertNotEqual(unhealthy.returncode, 0)
+            self.assertIn('容器启动或健康检查失败', unhealthy.stderr)
+            self.assertIn(f'bash {root}/deploy.sh --logs', unhealthy.stderr)
+            self.assertNotIn('HTTPS probe', log.read_text())
+            self.assertNotIn('setup_link.py', log.read_text())
+            self.assertNotIn('down', log.read_text())
+            self.assertNotIn('TACO小剧场已启动', unhealthy.stdout)
             self.assertEqual((root/'.env').read_bytes(), before)
 
     def test_check_mode_never_starts_containers_or_changes_existing_config(self):

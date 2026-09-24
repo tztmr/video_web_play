@@ -21,7 +21,10 @@ with urllib.request.urlopen(base+'/', timeout=3) as response:
     assert 'TACO小剧场' in response.read().decode()
 with urllib.request.urlopen(base+'/api/auth/status', timeout=3) as response:
     assert json.loads(response.read())['setup_required'] is True
-for path, method in [('/api/auth/me', 'GET'), ('/api/play/prefetch?item_id=1', 'POST')]:
+for path in ('/static/style.css', '/static/playback.js', '/static/direct-worker.js', '/static/mp4-decrypt.js'):
+    with urllib.request.urlopen(base+path, timeout=3) as response:
+        assert response.status == 200 and response.read(), path
+for path, method in [('/api/auth/me', 'GET'), ('/api/play/prefetch?item_id=1', 'POST'), ('/api/play/source?item_id=1', 'POST')]:
     try:
         urllib.request.urlopen(urllib.request.Request(base+path, method=method), timeout=3)
         raise AssertionError('Unauthenticated endpoint was allowed: '+path)

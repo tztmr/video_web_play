@@ -27,19 +27,32 @@ jobs:
           bash -n deploy.sh
           bash -n scripts/deploy_stack.sh
           bash deploy.sh --check --domain video.taco.net --direct
-      - name: Build standalone image
-        run: docker build -t taco-cinema:ci .
+      - name: Build from installer permissions (umask 077)
+        run: |
+          umask 077
+          git clone --quiet --no-hardlinks . "$RUNNER_TEMP/taco-private-context"
+          test "$(stat -c %a "$RUNNER_TEMP/taco-private-context/server.py")" = 600
+          test "$(stat -c %a "$RUNNER_TEMP/taco-private-context/static")" = 700
+          docker build -t taco-cinema:ci "$RUNNER_TEMP/taco-private-context"
       - name: Start production-configured container
         run: |
           docker network create taco-ci
           docker run --detach --name taco-smoke \
             --network taco-ci --network-alias web \
+            --volume taco-ci-data:/data \
             --env HONGGUO_ENV=production \
             --env HONGGUO_PUBLIC_URL=https://cinema.invalid \
             --env HONGGUO_ALLOWED_HOSTS=cinema.invalid,127.0.0.1,localhost \
             --env HONGGUO_NETWORK_MODE=direct \
             --env FORWARDED_ALLOW_IPS='*' taco-cinema:ci
           docker exec taco-smoke python scripts/smoke_container.py http://127.0.0.1:8787
+          docker exec taco-smoke python -c "import os; assert os.getuid() == 10001"
+      - name: Restart with the existing data volume
+        run: |
+          docker exec taco-smoke python -c "from pathlib import Path; Path('/data/keep-on-restart').write_text('preserved')"
+          docker restart taco-smoke
+          docker exec taco-smoke python scripts/smoke_container.py http://127.0.0.1:8787
+          docker exec taco-smoke python -c "from pathlib import Path; assert Path('/data/keep-on-restart').read_text() == 'preserved'"
       - name: Validate Caddy configuration
         run: |
           docker run --rm --env DOMAIN=cinema.invalid \
@@ -61,3 +74,4 @@ jobs:
         run: |
           docker rm -f taco-smoke taco-proxy 2>/dev/null || true
           docker network rm taco-ci 2>/dev/null || true
+          docker volume rm taco-ci-data 2>/dev/null || true
