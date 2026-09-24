@@ -178,10 +178,13 @@ install_acme() {
     return 0
   fi
   command -v curl >/dev/null || die '申请证书需要 curl 或已安装的 acme.sh。'
-  printf '未找到独立证书工具，正在安装 acme.sh 到部署目录（不会改动 3x-ui）…\n'
+  # Status must go to stderr: callers capture stdout as the acme.sh path.
+  printf '未找到独立证书工具，正在安装 acme.sh 到部署目录（不会改动 3x-ui）…\n' >&2
   mkdir -p -- "$ACME_HOME"
   chmod 700 "$ACME_HOME"
-  HOME="$ACME_HOME" curl -fsSL https://get.acme.sh | HOME="$ACME_HOME" LE_WORKING_DIR="$ACME_HOME" sh -s -- --install-online --home "$ACME_HOME" -m "taco@${DOMAIN}" >/dev/null
+  # get.acme.sh already injects --install-online and treats $1 as email=...
+  # Passing --install-online here becomes ----install-online and the installer aborts.
+  HOME="$ACME_HOME" curl -fsSL https://get.acme.sh | HOME="$ACME_HOME" LE_WORKING_DIR="$ACME_HOME" sh -s email="taco@${DOMAIN}" --home "$ACME_HOME" --noprofile >&2
   installer="$(find_acme || true)"
   [[ -n "$installer" ]] || die 'acme.sh 安装失败。'
   printf '%s\n' "$installer"

@@ -3,6 +3,7 @@
 ## 3x-ui 占用 80/443 时的 HTTPS 兼容（2026-09-24）
 
 - 源码改为先探测主机监听端口和 3x-ui 特征文件：不停止 x-ui/xray，不改写 `/root/.acme.sh` 的 `reloadcmd`。443 被占用时复用 `/root/cert/<域名>/`、acme.sh 或 `deploy/certs` 中未过期证书，并把 HTTPS 发布到空闲端口（通常 8443）；仅 80 被占用时改用 TLS-ALPN。独立 acme.sh 安装到 `deploy/acme/`。
+- 用户服务器日志确认 `get.acme.sh` 报 `Unknown parameter: ----install-online`。该安装器把第一个参数当成 `email=` 并再注入 `--install-online`；改为 `sh -s email=taco@域名 --home deploy/acme --noprofile`，安装提示改走 stderr，避免 `acme="$(install_acme)"` 把路径和提示混在一起。
 - 本机自动化：`.venv/bin/python -m unittest discover -s tests -v` **73/73 通过**。覆盖端口规划、3x-ui 证书复用、未找到证书时 `--copy-cert` 静默退出 2、`deploy/runtime.env` 无引号、占用 80/443 的部署脚本替身路径（探测 `https://域名:8443`、不调用 curl/iptables/systemctl）、安装器读取 `runtime.env`。Caddyfile 兼容模板分别关闭 HTTP-01 或 HTTP/3。
 - `bash -n deploy.sh scripts/deploy_stack.sh scripts/reload_caddy.sh` 通过。本机 `docker compose config --quiet` 在默认端口和占用端口（`8443:443` + `Caddyfile.tls`）两种 env 下均通过。
 - **证据边界**：以上为源码与本机测试。本机 Docker 守护进程未运行，未做 `caddy validate` 或容器启动。没有连接用户已安装 3x-ui 的服务器，不能证明线上 80/443 冲突、真实 Let's Encrypt 签发或 3x-ui 回落 443 已通过。
