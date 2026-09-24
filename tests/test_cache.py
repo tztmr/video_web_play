@@ -35,6 +35,10 @@ class CacheIndexTests(unittest.IsolatedAsyncioTestCase):
                 text=(await asyncio.to_thread(run,ffmpeg,'-v','error','-i',path,'-map','0:v:0','-f','framemd5','-')).decode()
                 return [line.rsplit(',',1)[-1].strip() for line in text.splitlines() if line and not line.startswith('#')]
             self.assertEqual(await hashes(source),await hashes(target))
-            info=json.loads(await asyncio.to_thread(run,ffprobe,'-v','error','-show_entries','format=duration','-of','json',target))
-            self.assertAlmostEqual(float(info['format']['duration']),1,delta=.1)
+            async def duration(path):
+                info=json.loads(await asyncio.to_thread(run,ffprobe,'-v','error','-show_entries','format=duration','-of','json',path))
+                return float(info['format']['duration'])
+            # AAC priming/B-frame timing varies between FFmpeg versions. Check
+            # remux preservation against its actual input, within one 25 fps frame.
+            self.assertAlmostEqual(await duration(target),await duration(source),delta=1/25)
             self.assertFalse(list(Path(folder).glob('*.indexed.mp4')))
