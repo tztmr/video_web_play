@@ -93,7 +93,7 @@ class DeployShellTests(unittest.TestCase):
     def test_deploy_update_and_https_failure_preserve_data_and_report_correctly(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            for path in ('scripts/deploy_stack.sh', 'compose.yaml', 'scripts/deploy_config.py', 'scripts/check_https.py', 'vendor/hongguo/endpoints/duanju.py'):
+            for path in ('scripts/deploy_stack.sh', 'compose.yaml', 'scripts/deploy_config.py', 'scripts/check_https.py', 'scripts/https_compat.py', 'vendor/hongguo/endpoints/duanju.py'):
                 target = root/path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT/path, target)
@@ -103,7 +103,7 @@ class DeployShellTests(unittest.TestCase):
             programs = {
                 'uname': '#!/bin/sh\necho Linux\n',
                 'docker': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DEPLOY_TEST_LOG"\ncase "$*" in\n  *"up --help") echo --wait-timeout;;\n  *"up -d --wait "*) exit "${DEPLOY_UP_RESULT:-0}";;\n  *"exec -T web python scripts/setup_link.py --if-needed") echo "setup checked";;\nesac\n',
-                'python3': '#!/bin/sh\ncase "$1" in\n  */check_https.py) printf "HTTPS probe\\n" >> "$DEPLOY_TEST_LOG"; exit "$DEPLOY_HTTPS_RESULT";;\n  *) exec "$DEPLOY_PYTHON" "$@";;\nesac\n',
+                'python3': '#!/bin/sh\ncase "$1" in\n  */check_https.py) printf "HTTPS probe %s\\n" "$2" >> "$DEPLOY_TEST_LOG"; exit "$DEPLOY_HTTPS_RESULT";;\n  *) exec "$DEPLOY_PYTHON" "$@";;\nesac\n',
             }
             for name, text in programs.items():
                 path = binary/name
@@ -141,6 +141,65 @@ class DeployShellTests(unittest.TestCase):
             self.assertNotIn('down', log.read_text())
             self.assertNotIn('TACO小剧场已启动', unhealthy.stdout)
             self.assertEqual((root/'.env').read_bytes(), before)
+
+
+    def test_occupied_ports_reuse_existing_cert_and_probe_alternate_https_port(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for path in ('scripts/deploy_stack.sh', 'compose.yaml', 'scripts/deploy_config.py', 'scripts/check_https.py', 'scripts/https_compat.py', 'vendor/hongguo/endpoints/duanju.py'):
+                target = root/path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT/path, target)
+            cert_dir = root/'deploy'/'certs'
+            cert_dir.mkdir(parents=True)
+            cert, key = cert_dir/'fullchain.pem', cert_dir/'privkey.pem'
+            made = subprocess.run(
+                ['openssl', 'req', '-x509', '-nodes', '-newkey', 'rsa:2048',
+                 '-keyout', str(key), '-out', str(cert), '-days', '30',
+                 '-subj', '/CN=video.taco.net'],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(made.returncode, 0, made.stderr)
+            marker = root/'x-ui.db'
+            marker.write_text('xui')
+            binary = root/'bin'
+            binary.mkdir()
+            log = root/'calls.log'
+            programs = {
+                'uname': '#!/bin/sh\necho Linux\n',
+                'docker': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DEPLOY_TEST_LOG"\ncase "$*" in\n  *"up --help") echo --wait-timeout;;\n  *"up -d --wait "*) exit 0;;\n  *"exec -T web python scripts/setup_link.py --if-needed") echo "setup checked";;\nesac\n',
+                'python3': '#!/bin/sh\ncase "$1" in\n  */check_https.py) printf "HTTPS probe %s\\n" "$2" >> "$DEPLOY_TEST_LOG"; exit 0;;\n  *) exec "$DEPLOY_PYTHON" "$@";;\nesac\n',
+                'curl': '#!/bin/sh\nprintf "curl %s\\n" "$*" >> "$DEPLOY_TEST_LOG"; exit 91\n',
+                'iptables': '#!/bin/sh\nprintf "iptables %s\\n" "$*" >> "$DEPLOY_TEST_LOG"; exit 91\n',
+                'systemctl': '#!/bin/sh\nprintf "systemctl %s\\n" "$*" >> "$DEPLOY_TEST_LOG"; exit 91\n',
+            }
+            for name, content in programs.items():
+                path = binary/name
+                path.write_text(content)
+                path.chmod(0o755)
+            environ = {
+                **os.environ,
+                'PATH': str(binary)+os.pathsep+os.environ['PATH'],
+                'DEPLOY_TEST_LOG': str(log),
+                'DEPLOY_PYTHON': sys.executable,
+                'TACO_LISTEN_PORTS': '80,443',
+                'TACO_XUI_MARKERS': str(marker),
+                'TACO_CERT_SEARCH_ROOTS': str(cert_dir),
+            }
+            run = subprocess.run(['bash', str(root/'scripts/deploy_stack.sh'), '--no-install', '--domain', 'video.taco.net', '--direct'], env=environ, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout+run.stderr)
+            self.assertIn('不会停止 3x-ui', run.stdout)
+            self.assertIn('https://video.taco.net:8443', run.stdout)
+            calls = log.read_text()
+            self.assertIn('HTTPS probe https://video.taco.net:8443', calls)
+            self.assertIn('--env-file '+str(root/'deploy'/'runtime.env'), calls)
+            self.assertNotIn('curl ', calls)
+            self.assertNotIn('iptables', calls)
+            self.assertNotIn('systemctl', calls)
+            runtime = (root/'deploy'/'runtime.env').read_text()
+            self.assertIn('TACO_HTTPS_PUBLISH=8443:443\n', runtime)
+            self.assertIn('TACO_CADDYFILE=./deploy/Caddyfile.tls\n', runtime)
+            self.assertIn('HONGGUO_PUBLIC_URL=https://video.taco.net:8443\n', runtime)
 
     def test_check_mode_never_starts_containers_or_changes_existing_config(self):
         with tempfile.TemporaryDirectory() as folder:

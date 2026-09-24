@@ -12,7 +12,7 @@
 curl -fL --retry 3 https://raw.githubusercontent.com/tztmr/video_web_play/main/deploy.sh -o taco-install.sh && bash taco-install.sh
 ```
 
-进入中文菜单，选择「1 一键安装」，按提示填写部署目录、已解析到服务器的域名和出口线路。脚本自动从 `https://github.com/tztmr/video_web_play.git` 拉取源码，安装所需依赖，构建容器与 Caddy HTTPS，再显示一次性管理员初始化链接。没有默认管理员密码。
+进入中文菜单，选择「1 一键安装」，按提示填写部署目录、已解析到服务器的域名和出口线路。脚本自动从 `https://github.com/tztmr/video_web_play.git` 拉取源码，安装所需依赖，构建容器与 Caddy HTTPS，再显示一次性管理员初始化链接。没有默认管理员密码。若服务器已安装 3x-ui 并占用 80/443，安装过程不会停止这些服务；可能改为 `https://域名:8443`，详见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 菜单支持更新、修改域名和线路、状态、日志、启停、备份、初始化链接、版本检查、地址库更新与保留数据卸载。再次执行 `bash taco-install.sh` 会记住部署目录；安装目录中的 `bash deploy.sh` 也可打开菜单。
 

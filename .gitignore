@@ -16,3 +16,8 @@ output/
 .deploy-env.*
 backups/
 *.mmdb
+deploy/runtime.env
+deploy/certs/*
+!deploy/certs/.gitkeep
+deploy/acme/
+

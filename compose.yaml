@@ -7,7 +7,7 @@ services:
     init: true
     environment:
       HONGGUO_ENV: production
-      HONGGUO_PUBLIC_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      HONGGUO_PUBLIC_URL: https://${DOMAIN:?Set DOMAIN in .env}${TACO_PUBLIC_PORT:-}
       HONGGUO_ALLOWED_HOSTS: ${DOMAIN},localhost,127.0.0.1
       FORWARDED_ALLOW_IPS: "*"
       HONGGUO_NETWORK_MODE: ${HONGGUO_NETWORK_MODE:-overseas}
@@ -29,12 +29,14 @@ services:
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN}
+      TACO_PUBLIC_PORT: ${TACO_PUBLIC_PORT:-}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${TACO_HTTP_PUBLISH:-80:80}"
+      - "${TACO_HTTPS_PUBLISH:-443:443}"
+      - "${TACO_HTTPS_UDP_PUBLISH:-443:443/udp}"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - "${TACO_CADDYFILE:-./deploy/Caddyfile}:/etc/caddy/Caddyfile:ro"
+      - "${TACO_CERT_DIR:-./deploy/certs}:/certs:ro"
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

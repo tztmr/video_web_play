@@ -179,8 +179,14 @@ prepare_compose() {
   fi
 }
 compose() {
-  (unset DOMAIN HONGGUO_NETWORK_MODE HONGGUO_UPSTREAM_PROXY COMPOSE_PROJECT_NAME
-   "${DOCKER[@]}" compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yaml" "$@")
+  # Avoid empty-array expansion under macOS Bash 3.2 nounset.
+  if [[ -f "$INSTALL_DIR/deploy/runtime.env" ]]; then
+    (unset DOMAIN HONGGUO_NETWORK_MODE HONGGUO_UPSTREAM_PROXY COMPOSE_PROJECT_NAME TACO_HTTP_PUBLISH TACO_HTTPS_PUBLISH TACO_HTTPS_UDP_PUBLISH TACO_PUBLIC_PORT TACO_CADDYFILE TACO_CERT_DIR HONGGUO_PUBLIC_URL
+     "${DOCKER[@]}" compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" --env-file "$INSTALL_DIR/deploy/runtime.env" -f "$INSTALL_DIR/compose.yaml" "$@")
+  else
+    (unset DOMAIN HONGGUO_NETWORK_MODE HONGGUO_UPSTREAM_PROXY COMPOSE_PROJECT_NAME TACO_HTTP_PUBLISH TACO_HTTPS_PUBLISH TACO_HTTPS_UDP_PUBLISH TACO_PUBLIC_PORT TACO_CADDYFILE TACO_CERT_DIR HONGGUO_PUBLIC_URL
+     "${DOCKER[@]}" compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yaml" "$@")
+  fi
 }
 do_status() { prepare_compose; compose ps; }
 do_logs() { prepare_compose; compose logs --tail=100 web caddy; }

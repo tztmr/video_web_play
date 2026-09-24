@@ -56,7 +56,8 @@ esac
                     'TACO_STATE_DIR':str(self.state), 'INSTALLER_LOG':str(self.log),
                     'GIT_CONFIG_NOSYSTEM':'1', 'GIT_CONFIG_GLOBAL':os.devnull,
                     'GIT_CONFIG_COUNT':'1', 'GIT_CONFIG_KEY_0':f'url.{self.source.as_uri()}.insteadOf',
-                    'GIT_CONFIG_VALUE_0':REPO, 'GIT_ALLOW_PROTOCOL':'file'}
+                    'GIT_CONFIG_VALUE_0':REPO, 'GIT_ALLOW_PROTOCOL':'file',
+                    'COPYFILE_DISABLE':'1'}
         self.git(self.source, 'init', '-b', 'main')
         self.commit('initial fixture')
 
@@ -156,6 +157,19 @@ esac
         self.assertNotEqual(failed.returncode, 0)
         self.assertNotIn('备份完成', failed.stdout)
         self.assertEqual(list(directory.iterdir()), [archive])
+
+
+    def test_status_uses_saved_runtime_bind_settings(self):
+        self.install()
+        runtime = self.target/'deploy'/'runtime.env'
+        runtime.parent.mkdir(parents=True, exist_ok=True)
+        runtime.write_text('TACO_HTTPS_PUBLISH=8443:443\n')
+        self.log.write_text('')
+        status = self.run_installer('--status')
+        self.assertEqual(status.returncode, 0, status.stderr)
+        calls = self.log.read_text()
+        self.assertIn('--env-file %s' % (self.target / '.env'), calls)
+        self.assertIn('--env-file %s' % (self.target / 'deploy' / 'runtime.env'), calls)
 
     def test_reconfigure_and_refresh_dispatch_to_existing_checkout(self):
         self.install()

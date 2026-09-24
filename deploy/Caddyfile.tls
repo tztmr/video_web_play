@@ -1,0 +1,32 @@
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
+http://{$DOMAIN} {
+    redir https://{$DOMAIN}{$TACO_PUBLIC_PORT}{uri} permanent
+}
+
+{$DOMAIN} {
+    tls /certs/fullchain.pem /certs/privkey.pem
+    request_body {
+        max_size 1MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        Referrer-Policy "no-referrer"
+        X-Content-Type-Options "nosniff"
+    }
+    reverse_proxy web:8787 {
+        # Overwrite visitor-supplied forwarding headers with the TCP peer.
+        header_up X-Forwarded-For {remote_host}
+        header_up -X-Real-IP
+        header_up -CF-Connecting-IP
+        header_up -True-Client-IP
+        header_up -Forwarded
+        transport http {
+            response_header_timeout 330s
+        }
+    }
+}

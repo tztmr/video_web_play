@@ -26,7 +26,18 @@ jobs:
           for file in static/*.js; do node --input-type=module --check < "$file"; done
           bash -n deploy.sh
           bash -n scripts/deploy_stack.sh
+          bash -n scripts/reload_caddy.sh
           bash deploy.sh --check --domain video.taco.net --direct
+          tmp="$(mktemp)"
+          printf '%s\n' 'DOMAIN=video.taco.net' 'HONGGUO_NETWORK_MODE=direct' > "$tmp"
+          docker compose --project-directory "$PWD" --env-file "$tmp" -f compose.yaml config --quiet
+          printf '%s\n' 'DOMAIN=video.taco.net' 'HONGGUO_NETWORK_MODE=direct' \
+            'TACO_HTTP_PUBLISH=127.0.0.1:18080:80' 'TACO_HTTPS_PUBLISH=8443:443' \
+            'TACO_HTTPS_UDP_PUBLISH=8443:443/udp' 'TACO_PUBLIC_PORT=:8443' \
+            'TACO_CADDYFILE=./deploy/Caddyfile.tls' 'TACO_CERT_DIR=./deploy/certs' \
+            'HONGGUO_PUBLIC_URL=https://video.taco.net:8443' > "$tmp"
+          docker compose --project-directory "$PWD" --env-file "$tmp" -f compose.yaml config --quiet
+          rm -f "$tmp"
       - name: Build from installer permissions (umask 077)
         run: |
           umask 077
@@ -57,6 +68,18 @@ jobs:
         run: |
           docker run --rm --env DOMAIN=cinema.invalid \
             --volume "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker run --rm --env DOMAIN=cinema.invalid \
+            --volume "$PWD/deploy/Caddyfile.alpn:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          cert_dir="$RUNNER_TEMP/taco-caddy-certs"
+          mkdir -p "$cert_dir"
+          openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout "$cert_dir/privkey.pem" -out "$cert_dir/fullchain.pem" \
+            -days 1 -subj '/CN=cinema.invalid'
+          docker run --rm --env DOMAIN=cinema.invalid --env TACO_PUBLIC_PORT=:8443 \
+            --volume "$PWD/deploy/Caddyfile.tls:/etc/caddy/Caddyfile:ro" \
+            --volume "$cert_dir:/certs:ro" \
             caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Verify country blocking and real Caddy forwarding
         run: |
