@@ -1,0 +1,12 @@
+.data
+.venv
+output
+.playwright-cli
+__pycache__
+**/__pycache__
+.git
+.env
+.env.*
+tests
+**/*.pyc
+**/.DS_Store

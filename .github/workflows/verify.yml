@@ -1,0 +1,50 @@
+name: Verify TACO cinema
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install -r requirements.txt
+      - name: Tests and deployment configuration
+        run: |
+          python -m unittest discover -s tests -v
+          for file in static/*.js; do node --input-type=module --check < "$file"; done
+          bash -n deploy.sh
+          bash deploy.sh --check --domain video.taco.net --direct
+      - name: Build standalone image
+        run: docker build -t taco-cinema:ci .
+      - name: Start production-configured container
+        run: |
+          docker run --detach --name taco-smoke \
+            --env HONGGUO_ENV=production \
+            --env HONGGUO_PUBLIC_URL=https://cinema.invalid \
+            --env HONGGUO_ALLOWED_HOSTS=cinema.invalid,127.0.0.1,localhost \
+            --env HONGGUO_NETWORK_MODE=direct \
+            --publish 127.0.0.1:18787:8787 taco-cinema:ci
+          python scripts/smoke_container.py
+      - name: Validate Caddy configuration
+        run: |
+          docker run --rm --env DOMAIN=cinema.invalid \
+            --volume "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs taco-smoke 2>/dev/null || true
+      - name: Clean up smoke container
+        if: always()
+        run: docker rm -f taco-smoke 2>/dev/null || true

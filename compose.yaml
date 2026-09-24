@@ -1,0 +1,55 @@
+name: taco-cinema
+services:
+  web:
+    build:
+      context: .
+    restart: unless-stopped
+    init: true
+    environment:
+      HONGGUO_ENV: production
+      HONGGUO_PUBLIC_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      HONGGUO_ALLOWED_HOSTS: ${DOMAIN},localhost,127.0.0.1
+      FORWARDED_ALLOW_IPS: "*"
+      HONGGUO_NETWORK_MODE: ${HONGGUO_NETWORK_MODE:-overseas}
+      HONGGUO_UPSTREAM_PROXY: ${HONGGUO_UPSTREAM_PROXY:-}
+    volumes:
+      - cinema_data:/data
+    expose:
+      - "8787"
+    networks:
+      - cinema
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - cinema
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+volumes:
+  cinema_data:
+  caddy_data:
+  caddy_config:
+networks:
+  cinema:

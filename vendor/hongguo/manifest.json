@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/tztmr/hongguo-download",
+  "revision": "7758098e83ed24e01ac0ed4631fd3e2081870048",
+  "files": {
+    "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "core/cache.py": "d9ec0021f90790ffd9574a37fcad802d60664ebf646f4b4da26859e09e69bc44",
+    "core/device_pool.py": "786b9d54f562a7588c21b034ba9fddead2b161d62d7d4fd1d6a9bb8d2e377737",
+    "core/device_register.py": "e2f668937a1b6135e45a151bb7b38010644c7a0d7360af15ae1d806fd604f824",
+    "core/download_diagnostics.py": "2dcc9a995845ba802d6a8cd8a10036c4c2f517f9396dc75bb28016ab4cb88f29",
+    "core/duanju_feeds.py": "b2e64213f79f31aef652d81acf8bb2852ede2f511ce5ecca8287f4d8fffa6e11",
+    "core/http_client.py": "fe97b387a82bb6468e1cb650cc546aaeb8c4573fe831f9fbfc08a62ed6b0233a",
+    "core/mp4_decrypt.py": "cbcb3cdc392fb15994e5621c7585343e9ab8adbd9477b52ee2d812caf703b988",
+    "core/new_releases.py": "24a22ddac93bc54f34bb3be5f0036fb8688803ae598ddffb3d044bb765a7d7a7",
+    "core/playback.py": "9a879b53b24d760e7bf649e45ddbb4877de5f4d3ed7c7a17a8208348587bee66",
+    "core/pure_sign.py": "ab3f135c19871f8e7b40301d3f062bbbbed6d59367d567a2ce48732ca1125bf5",
+    "core/response.py": "424209ee67e60283c89c2a7dc8b5d96916eeb529acda7e8ce3377ddef1a753b0",
+    "core/scheduler.py": "6a41854c4e605a5abce293fbe7cc86b9b77d9d9fbf8c03199f1a3efcb77928d7",
+    "core/sign_70932.py": "fda89dc98933b90f25cec7e66d34f8b81fe46e0538e266b8200d1baa7ecaa230",
+    "core/video_download.py": "0d64d038da05601400481a3f5c014a3c7d8225cb3b3dc4816b067d60dffeff11",
+    "core/web_catalog.py": "86613a93b93a952b4aaa6494d7538c38091b7c2f84920055636f75fa2bb0fc42",
+    "endpoints/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "endpoints/duanju.py": "8c34318db711ff0b7d6ce36cb12692468bbd7daab8f18ec9b5a173d171d24385",
+    "endpoints/web_catalog.py": "09ba79e205bcec171ab0f26854a2ce789bc036c41f8a9c416e7166e977300b09"
+  }
+}

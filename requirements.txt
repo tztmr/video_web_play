@@ -1,0 +1,7 @@
+fastapi>=0.115.2,<1
+starlette>=0.40,<1
+uvicorn[standard]>=0.30,<1
+httpx[socks]>=0.27,<1
+orjson>=3.8,<4
+pycryptodome>=3.18,<4
+tzdata>=2024.1

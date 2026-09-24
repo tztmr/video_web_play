@@ -1,0 +1,89 @@
+"""Website category filters, independent of signed bookmall cursor sessions."""
+
+import logging
+
+import httpx
+from fastapi import APIRouter, Query
+
+from core.cache import TTLCache, make_cache_key
+from core.response import error, success
+from core.web_catalog import (
+    WEB_ORIGIN,
+    category_source_url,
+    CatalogFormatError,
+    build_category_url,
+    parse_category_page,
+    parse_selector_html,
+)
+
+logger = logging.getLogger('fanqie.web_catalog')
+router = APIRouter()
+_catalog_cache = TTLCache(default_ttl=60, max_size=256)
+
+
+async def _fetch_public(url: str):
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json,text/html'}) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        if url.startswith(f'{WEB_ORIGIN}/category'):
+            return response.text
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise CatalogFormatError('官网分类返回了无效数据') from exc
+
+
+async def _load_groups(content_type='drama'):
+    key = make_cache_key('groups', content_type=content_type)
+    cached = _catalog_cache.get(key)
+    if cached is not None:
+        return cached
+    groups = parse_selector_html(await _fetch_public(category_source_url(content_type)), content_type=content_type)
+    _catalog_cache.set(key, groups, ttl=300)
+    return groups
+
+
+@router.get('/duanju/web-categories')
+async def web_categories(content_type: str = Query('drama', pattern='^(drama|manju|ai)$')):
+    try:
+        return success({'groups': await _load_groups(content_type), 'source': 'hongguo_web', 'source_url': category_source_url(content_type)})
+    except (httpx.HTTPError, CatalogFormatError) as exc:
+        logger.warning('Public category dictionary failed: %s', type(exc).__name__)
+        return error('官网分类暂不可用，请稍后重试', code=502, status_code=502)
+
+
+@router.get('/duanju/web-category')
+async def web_category(
+    content_type: str = Query('drama', pattern='^(drama|manju|ai)$'),
+    background: str = Query('', pattern=r'^(cate_\d+)?$'),
+    topic: str = Query('', pattern=r'^(cate_\d+|[a-z][a-z0-9-]*)?$'),
+    setting: str = Query('', pattern=r'^(cate_\d+)?$'),
+    gender: str = Query('2', pattern='^[012]$'),
+    time: str = Query('0', pattern='^[0-4]$'),
+    sort_type: str = Query('0', pattern='^[012]$'),
+    page: int = Query(1, ge=1, le=1000),
+):
+    filters = dict(content_type=content_type, background=background, topic=topic, setting=setting, gender=gender, time=time, sort_type=sort_type, page=page)
+    cache_key = make_cache_key('page', **filters)
+    cached = _catalog_cache.get(cache_key)
+    if cached is not None:
+        return success(cached)
+    try:
+        if any((background, topic, setting)):
+            groups = {group['id']: group for group in await _load_groups(content_type)}
+            for key in ('background', 'topic', 'setting'):
+                selected = filters[key]
+                if not selected:
+                    continue
+                group = groups.get(key)
+                option = next((item for item in group['items'] if item['id'] == selected), None) if group else None
+                if option is None:
+                    name = group['name'] if group else '分类'
+                    return error(f"无效的{name}筛选，请刷新分类后重试", status_code=400)
+        payload = await _fetch_public(build_category_url(**filters))
+        data = parse_category_page(payload, page=page, content_type=content_type)
+    except (httpx.HTTPError, CatalogFormatError) as exc:
+        logger.warning('Public category page failed: %s', type(exc).__name__)
+        return error('官网分类加载失败，请重试；当前筛选条件已保留', code=502, status_code=502)
+    _catalog_cache.set(cache_key, data)
+    return success(data)

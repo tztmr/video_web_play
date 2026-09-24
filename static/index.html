@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101014"><meta name="color-scheme" content="dark">
+  <meta name="description" content="TACO小剧场，在本地享受你的短剧时光。">
+  <title>TACO小剧场 · 好故事，随时开场</title>
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/account.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="TACO小剧场首页"><img src="/static/icon.svg" alt=""><span>TACO<span class="brand-sub">小剧场</span></span></a>
+    <div class="nav-label">发现好故事</div>
+    <nav aria-label="主导航">
+      <button class="nav-item active" data-view="discover"><span class="nav-icon">◈</span>精选剧场<span class="nav-dot"></span></button>
+      <button class="nav-item" data-view="rank"><span class="nav-icon">↗</span>人气榜单</button>
+      <div class="nav-label library-label">我的片单</div>
+      <button class="nav-item" data-view="favorites"><span class="nav-icon">♡</span>我的收藏<span class="nav-count" id="favorite-count">0</span></button>
+      <button class="nav-item" data-view="history"><span class="nav-icon">◷</span>观看记录</button>
+    </nav>
+    <div class="sidebar-note"><span class="note-icon">▻</span><strong>留一点时间，给好故事</strong><p>一个人的小剧场<br>也是生活的暂停键。</p></div>
+    <div class="connection"><i id="connection-dot"></i><span id="connection-label">正在连接本地服务</span></div>
+    <div class="sidebar-footer">LOCAL CINEMA <span>VOL. 01</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="breadcrumb">你的专属放映厅 <span>/</span> <strong id="breadcrumb">精选剧场</strong></div>
+      <form id="search-form" role="search"><span>⌕</span><input id="search-input" type="search" placeholder="搜索剧名，发现下一个好故事" aria-label="搜索剧名" maxlength="100" autocomplete="off"><button type="submit">搜索</button></form>
+      <div class="account-actions"><span id="account-name"></span><a id="admin-link" href="/admin" hidden>管理中心</a><button id="logout" type="button">退出</button></div>
+    </header>
+    <main id="main">
+      <section id="hero" class="hero" aria-label="本期推荐">
+        <div class="hero-art" id="hero-art"></div><div class="hero-shade"></div>
+        <div class="hero-content"><div class="eyebrow"><span></span> TACO THEATER <em>本期精选</em></div>
+          <h1 id="hero-title">好故事，<br>随时开场。</h1><div id="hero-tags" class="hero-tags"><span>短一点的剧 · 多一点的精彩</span></div>
+          <p id="hero-description">把忙碌留在门外，让故事陪你一会儿。</p>
+          <div class="hero-actions"><button id="hero-play" class="primary" disabled><span>▶</span> 立即观看</button><button id="hero-save" class="glass" disabled><span>＋</span> 加入收藏</button></div>
+        </div><div class="hero-bottom"><span>每一集，都是新的心动</span><span class="hero-pagination"><b></b><i></i><i></i> 01 / SELECTED</span></div>
+      </section>
+      <section id="continue-section" class="continue-section" hidden><div class="section-heading"><h2>接着上次的故事</h2><button id="all-history" class="text-button">全部记录 ↗</button></div><div id="continue-list" class="continue-list"></div></section>
+      <section class="catalog-section">
+        <div class="section-heading"><div class="heading-with-line"><span></span><h2 id="section-title">发现你的下一部好剧</h2><small id="result-count"></small></div><button id="refresh" class="text-button">↻ 刷新片单</button></div>
+        <div class="filters" id="filters"><div class="type-tabs" role="group" aria-label="内容类型"><button data-type="drama" class="selected">真人短剧</button><button data-type="manju">漫剧</button><button data-type="ai">AI 剧场</button></div><div id="topics" class="topics" aria-label="题材分类"></div></div>
+        <div id="catalog-status" class="catalog-status" role="status" hidden></div>
+        <div id="grid" class="drama-grid"></div>
+        <div class="load-more-wrap"><button id="load-more" class="secondary" hidden>再发现一些好故事 ↓</button></div>
+      </section>
+      <footer class="page-footer"><span class="footer-mark">◈</span> TACO小剧场 <span>好故事，不散场。</span><small>观看记录仅保存在当前浏览器</small></footer>
+    </main>
+  </div>
+  <dialog id="player-dialog" aria-labelledby="player-title">
+    <div class="player-header"><div><span class="live-label">NOW SHOWING</span><h2 id="player-title"></h2></div><button id="close-player" class="icon-button" aria-label="关闭播放器">×</button></div>
+    <div class="player-layout"><div class="player-left"><div class="video-stage"><video id="video" controls playsinline preload="metadata"></video><div id="player-status" class="player-status" role="status"></div></div><div class="playback-toolbar"><div class="episode-controls"><button id="previous" class="secondary">上一集</button><span id="playing-label">选集播放</span><button id="next" class="secondary">下一集</button></div><div class="video-options"><label>清晰度 <select id="quality"><option value="1080p">1080P</option><option value="720p" selected>720P</option><option value="540p">540P</option><option value="360p">360P</option></select></label><label>倍速 <select id="speed"><option value="1">1.0×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2.0×</option></select></label></div></div><p id="playback-hint" class="playback-hint">好故事马上开场。</p><section id="share-box" class="share-box" hidden><form id="share-form"><div class="share-settings"><label>分享天数 <input id="share-days" class="field-input" type="number" min="0" max="3650" step="1" value="0" required></label><span>0 天为永久有效 · 免登录观看</span><button class="primary" id="share-create" type="submit">生成分享链接</button></div></form><div id="share-result" class="share-result"><input id="share-url" class="field-input" readonly aria-label="分享链接" placeholder="生成后，分享链接会显示在这里"><button id="share-copy" class="secondary" disabled>复制</button></div><p id="share-message" class="form-error" role="status"></p></section></div>
+    <aside class="episode-panel"><div class="episode-panel-heading"><h3>剧集目录 <small id="episode-count"></small></h3><button id="player-favorite" class="text-button">♡ 收藏</button></div><p id="player-description"></p><label class="autoplay-label"><input id="auto-next" type="checkbox" checked> 自动播放下一集</label><div id="episodes" class="episode-grid"></div></aside></div>
+
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

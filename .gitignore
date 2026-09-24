@@ -1,0 +1,16 @@
+.data/
+.venv/
+__pycache__/
+*.pyc
+output/
+.playwright-cli/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite*
+*.db
+*.pem
+*.key
+.deploy-env.*
